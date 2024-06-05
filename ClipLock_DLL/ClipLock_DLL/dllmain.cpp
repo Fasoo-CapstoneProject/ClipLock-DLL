@@ -1,6 +1,7 @@
 ﻿#include "Windows.h"
 #include "detours.h"
 #include "formatDebug.h"
+#include "pngcrypt.h"
 
 #define DLLBASIC_API extern "C" __declspec(dllexport)
 
@@ -35,6 +36,9 @@ BOOL APIENTRY DllMain(HMODULE hModule,
     switch (ul_reason_for_call)
     {
     case DLL_PROCESS_ATTACH:
+        // png reading test
+        PngParseTest();
+
         DisableThreadLibraryCalls(hModule);
         DetourTransactionBegin();
         DetourUpdateThread(GetCurrentThread());
