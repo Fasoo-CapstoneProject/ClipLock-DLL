@@ -24,6 +24,9 @@ UINT CF_MYFORMAT;
 // Header 메모리 공간 할당 및 초기화 함수
 HGLOBAL AllocateHeader(const vector<BYTE>& key, const vector<BYTE>& iv, DWORD encryptedSize);
 
+// Header의 데이터를 가져오는 함수, 성공하면 true, 실패하면 false 반환
+bool LoadHeader(HANDLE hHeaderMem, vector<BYTE>& key, vector<BYTE>& iv, DWORD& encryptedSize);
+
 // Target Pointer
 static HANDLE(WINAPI* TrueSetClipboardData)(UINT uFormat, HANDLE hMem) = SetClipboardData;
 static HANDLE(WINAPI* TrueGetClipboardData)(UINT uFormat) = GetClipboardData;
@@ -87,19 +90,7 @@ DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
 
         // CF_MYFORMAT 형식의 클립보드 데이터 가져오기
         HANDLE hHeaderMem = TrueGetClipboardData(CF_MYFORMAT);
-        if (hHeaderMem != NULL) {
-            Header* pHeader = (Header*)GlobalLock(hHeaderMem);
-
-            if (pHeader != NULL) {
-                // Key값과 IV값 가져오기
-                memcpy(key.data(), pHeader->key, key.size());
-                memcpy(iv.data(), pHeader->iv, iv.size());
-                encryptedSize = pHeader->encryptedSize;
-                GlobalUnlock(pHeader);
-            }
-        }
-
-        if (!key.empty() && !iv.empty() && encryptedSize > 0) {
+        if (LoadHeader(hHeaderMem, key, iv, encryptedSize)) {
             // 유니코드 형식의 클립보드 데이터 가져오기
             HANDLE hMem = TrueGetClipboardData(CF_UNICODETEXT);
 
@@ -134,9 +125,9 @@ DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
                         OutputDebugStringA(e.what());
                     }
                 }
-            }
-        } // if(!key.empty() && !iv.empty() && encryptedSize > 0)
-    }
+            } // if (hMem != NULL)
+        } // if (LoadHeader(hHeaderMem, key, iv, encryptedSize))
+    } // if (uFormat == CF_UNICODETEXT && IsClipboardFormatAvailable(CF_MYFORMAT))
 
     return TrueGetClipboardData(uFormat);
 }
@@ -199,4 +190,24 @@ HGLOBAL AllocateHeader(const vector<BYTE>& key, const vector<BYTE>& iv, DWORD en
     }
 
     return NULL;
+}
+
+// Header의 데이터를 가져오는 함수, 성공하면 true, 실패하면 false 반환
+bool LoadHeader(HANDLE hHeaderMem, vector<BYTE>& key, vector<BYTE>& iv, DWORD& encryptedSize)
+{
+    if (hHeaderMem != NULL) {
+        Header* pHeader = (Header*)GlobalLock(hHeaderMem);
+
+        if (pHeader != NULL) {
+            // Key값과 IV값 가져오기
+            memcpy(key.data(), pHeader->key, key.size());
+            memcpy(iv.data(), pHeader->iv, iv.size());
+            encryptedSize = pHeader->encryptedSize;
+            GlobalUnlock(pHeader);
+
+            return true;
+        }
+    }
+
+    return false;
 }
