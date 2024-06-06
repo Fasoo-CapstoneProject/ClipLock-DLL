@@ -1,11 +1,33 @@
-﻿#include "Windows.h"
+﻿#include <iostream>
+#include <vector>
+#include <string>
+#include "Windows.h"
 #include "detours.h"
+#include "crypto.h"
 #include "formatDebug.h"
 #include "pngcrypt.h"
+#include "util.h"
 
 #define DLLBASIC_API extern "C" __declspec(dllexport)
 
-UINT costumFormat;
+using namespace std;
+
+// Header 구조체
+struct Header {
+    BYTE key[32];           // 256bit 대칭키
+    BYTE iv[16];            // IV(Initialize Vector)
+    DWORD encryptedSize;    // 암호화된 크기(Byte 단위)
+    DWORD width;
+    DWORD height;
+    DWORD leftOverSize; 
+};
+
+// Registered Clipboard Format
+const char* RegisteredName = "CF_MYFORMAT";
+UINT CF_MYFORMAT;
+
+// Header 메모리 공간 할당 및 초기화 함수
+HGLOBAL AllocateHeader(const vector<BYTE>& key, const vector<BYTE>& iv, DWORD encryptedSize, DWORD width, DWORD height, DWORD leftOverSize);
 
 // Target Pointer
 static HANDLE(WINAPI* TrueSetClipboardData)(UINT uFormat, HANDLE hMem) = SetClipboardData;
@@ -13,41 +35,118 @@ static HANDLE(WINAPI* TrueGetClipboardData)(UINT uFormat) = GetClipboardData;
 
 DLLBASIC_API HANDLE WINAPI MySetClipboardData(UINT uFormat, HANDLE hMem)
 {
-    GetClipboardFormat(uFormat, formatName, sizeof(formatName));
-    sprintf_s(buffer, sizeof(buffer), "Set Format num : 0x%x, name : %s\n", uFormat, formatName);
-    OutputDebugStringA(buffer);
+    // 유니코드 형식인 경우
+    if (uFormat == CF_UNICODETEXT) {
+        // 유니코드 데이터 가져오기
+        wchar_t* pUniText = (wchar_t*)GlobalLock(hMem);
 
+        if (pUniText != NULL) {
+            // 유티코드를 BYTE로 변환하기
+            vector<BYTE> plaintext = UnicodeToUtf8(pUniText);
+            GlobalUnlock(hMem);
+
+            try {
+                // AES 대칭키 및 IV 생성
+                vector<BYTE> key = GenerateAESKey();
+                vector<BYTE> iv = GenerateIV();
+
+                // AES 암호화
+                vector<BYTE> encryptedText = EncryptAES(plaintext, key, iv);
+
+                
+                
+
+                // Header를 위한 공간 Allocate
+                HGLOBAL pHeader = AllocateHeader(key, iv, (DWORD)encryptedText.size(), 0, 0, 0);
+                if (pHeader != NULL) {
+                    // 메모장에서는 클립보드에 CF_UNICODETEXT 형식으로 데이터를 저장할 때, 마지막 2byte는 0으로 초기화를 무조건 하는 것 같음
+                    HGLOBAL hEncryptedMem = GlobalAlloc(GMEM_MOVEABLE, encryptedText.size() + sizeof(wchar_t));
+                    if (hEncryptedMem != NULL) {
+                        BYTE* encryptedBuffer = (BYTE*)GlobalLock(hEncryptedMem);
+                        if (encryptedBuffer != NULL) {
+                            memcpy(encryptedBuffer, encryptedText.data(), encryptedText.size());
+                            GlobalUnlock(hEncryptedMem);
+
+                            // 유니코드 형식, 등록된 형식 2개 다 클립보드에 넣기
+                            TrueSetClipboardData(CF_MYFORMAT, pHeader);
+
+                            return TrueSetClipboardData(uFormat, hEncryptedMem);
+                        }
+                    }
+                }
+            }
+            catch (const exception& e) {
+                // 오류 메세지 출력
+                OutputDebugStringA(e.what());
+            }
+        } // if (pUniText != NULL)
+    }
     // png 처리
-    if (uFormat == 0xc17d) {
+    else if (uFormat == 0xc17d) {
         if (hMem != NULL) {
             BYTE* pData = (BYTE*)GlobalLock(hMem);
             SIZE_T dataSize = GlobalSize(hMem);
 
+            //saveToBinaryFile("C:\\Users\\hhtbo\\github\\ClipLock-DLL\\ClipLock_DLL\\ClipLock_DLL\\x64\\Debug\\log\\bf", (char*)pData, dataSize);
+
             // 압축 해제, 디필터링
             int width, height;
             std::vector<unsigned char> imageData = read_png_from_memory(pData, dataSize, width, height);
+
+            //write_vector_to_binary_file("C:\\Users\\hhtbo\\github\\ClipLock-DLL\\ClipLock_DLL\\ClipLock_DLL\\x64\\Debug\\log\\read1", imageData);
+
+            //sprintf_s(buffer, sizeof(buffer), "width / height / dataSize : %d, %d, %d", width, height, dataSize);
+            OutputDebugStringA(buffer);
             GlobalUnlock(hMem);
 
-            // xor 암호화
-            xorPng(imageData);
+            // AES 대칭키 및 IV 생성
+            vector<BYTE> key = GenerateAESKey();
+            vector<BYTE> iv = GenerateIV();
 
+            // AES 암호화
+            vector<BYTE> encryptedText = EncryptAES(imageData, key, iv);   
+
+            std::pair<int, int> pair = find_factors(encryptedText.size() / 4);
+
+
+            sprintf_s(buffer, sizeof(buffer), "set encryptedText size : %d", encryptedText.size());
+            OutputDebugStringA(buffer);
+
+            write_vector_to_binary_file("C:\\Users\\hhtbo\\github\\ClipLock-DLL\\ClipLock_DLL\\ClipLock_DLL\\x64\\Debug\\log\\read1", encryptedText);
+
+            // rgb 사이즈를 정하고 부족한 부분을 더미 픽셀로 채운다.
+            int leftOverSize = pair.first * pair.second - encryptedText.size() / 4;
+            for (int i = 0; i < leftOverSize * 4; i++) {
+                encryptedText.push_back(0xff);
+            }
+            
             // 필터링, 압축
             SIZE_T pngSize;
-            char* encryptedPng = create_png_from_rgb(imageData, width, height, pngSize);
+            char* encryptedPng = create_png_from_rgb(encryptedText, pair.first, pair.second, pngSize); // rgb 잘 추출 이미지 잘 나옴 -> 빠진 거 (보조청크)
 
-            HGLOBAL hNewMem = GlobalAlloc(GMEM_MOVEABLE, (pngSize + 1) * sizeof(char));
+            //saveToBinaryFile("C:\\Users\\hhtbo\\github\\ClipLock-DLL\\ClipLock_DLL\\ClipLock_DLL\\x64\\Debug\\log\\af", (char*)encryptedPng, pngSize);
+            
+            HGLOBAL pHeader = AllocateHeader(key, iv, encryptedText.size(), width, height, leftOverSize);
+
+            
+
+            /*sprintf_s(buffer, sizeof(buffer), "width / height / dataSize : %d, %d, %d", width, height, pngSize);
+            OutputDebugStringA(buffer);*/
+            HGLOBAL hNewMem = GlobalAlloc(GMEM_MOVEABLE, (pngSize) * sizeof(char));
             if (hNewMem != NULL) {
                 char* newBuffer = (char*)GlobalLock(hNewMem);
                 if (newBuffer != NULL) {
-                    memcpy(newBuffer, encryptedPng, pngSize + 1);
+                    memcpy(newBuffer, encryptedPng, pngSize);
                     GlobalUnlock(hNewMem);
                     OutputDebugStringA("png encryption success");
 
-                    // 클립보드에 넣기
-                    TrueSetClipboardData(costumFormat, hNewMem);
+                    // 클립보드에 헤더 넣기
+                    TrueSetClipboardData(CF_MYFORMAT, pHeader);
+
+                    // 클립보드에 원래 형식으로 암호화된 데이터 넣기
                     return TrueSetClipboardData(uFormat, hNewMem);
                 }
-            }      
+            }
         }
     }
 
@@ -56,10 +155,148 @@ DLLBASIC_API HANDLE WINAPI MySetClipboardData(UINT uFormat, HANDLE hMem)
 
 DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
 {
-    GetClipboardFormat(uFormat, formatName, sizeof(formatName));
-    sprintf_s(buffer, sizeof(buffer), "Get Format num : 0x%x, name : %s\n", uFormat, formatName);
-    OutputDebugStringA(buffer);
+    // 유니코드 형식이면서, 클립보드에 CF_MYFORMAT 형식이 있는 경우
+    if (uFormat == CF_UNICODETEXT && IsClipboardFormatAvailable(CF_MYFORMAT)) {
+        vector<BYTE> key(32);
+        vector<BYTE> iv(16);
+        DWORD encryptedSize = 0;
 
+        // CF_MYFORMAT 형식의 클립보드 데이터 가져오기
+        HANDLE hHeaderMem = TrueGetClipboardData(CF_MYFORMAT);
+        if (hHeaderMem != NULL) {
+            Header* pHeader = (Header*)GlobalLock(hHeaderMem);
+
+            if (pHeader != NULL) {
+                // Key값과 IV값 가져오기
+                memcpy(key.data(), pHeader->key, key.size());
+                memcpy(iv.data(), pHeader->iv, iv.size());
+                encryptedSize = pHeader->encryptedSize;
+                GlobalUnlock(pHeader);
+            }
+        }
+
+        if (!key.empty() && !iv.empty() && encryptedSize > 0) {
+            // 유니코드 형식의 클립보드 데이터 가져오기
+            HANDLE hMem = TrueGetClipboardData(0xc);
+
+            if (hMem != NULL) {
+                BYTE* pEncryptedText = (BYTE*)GlobalLock(hMem);
+
+                if (pEncryptedText != NULL) {
+                    vector<BYTE> encryptedText(pEncryptedText, pEncryptedText + encryptedSize);
+                    GlobalUnlock(hMem);
+
+                    try {
+                        // 대칭키와 IV를 사용해서 복호화
+                        vector<BYTE> decryptedText = DecryptAES(encryptedText, key, iv);
+
+                        // BYTE를 유니코드로 변환하기
+                        wstring decryptedTextWstr = Utf8ToUnicode(decryptedText);
+
+                        HGLOBAL hDecryptedMem = GlobalAlloc(GMEM_MOVEABLE, (decryptedTextWstr.size() + 1) * sizeof(wchar_t));
+                        if (hDecryptedMem != NULL) {
+                            wchar_t* decryptedBuffer = (wchar_t*)GlobalLock(hDecryptedMem);
+
+                            if (decryptedBuffer != NULL) {
+                                wcscpy_s(decryptedBuffer, decryptedTextWstr.size() + 1, decryptedTextWstr.c_str());
+                                GlobalUnlock(hDecryptedMem);
+
+                                return hDecryptedMem;
+                            }
+                        }
+                    }
+                    catch (const exception& e) {
+                        // 오류 메시지 출력
+                        OutputDebugStringA(e.what());
+                    }
+                }
+            }
+        } // if(!key.empty() && !iv.empty() && encryptedSize > 0)
+    }
+    // png 처리
+    else if (uFormat == 0xc17d) {
+        // 일단 가져와야 함.
+        HANDLE hMem = TrueGetClipboardData(0xc17d);
+
+        vector<BYTE> key(32);
+        vector<BYTE> iv(16);
+        DWORD encryptedSize = 0;
+        DWORD width;
+        DWORD height;
+        DWORD leftOverSize;
+
+        // CF_MYFORMAT 형식의 클립보드 데이터 가져오기
+        HANDLE hHeaderMem = TrueGetClipboardData(CF_MYFORMAT);
+        if (hHeaderMem != NULL) {
+            Header* pHeader = (Header*)GlobalLock(hHeaderMem);
+
+            if (pHeader != NULL) {
+                // Key값과 IV값 가져오기
+                memcpy(key.data(), pHeader->key, key.size());
+                memcpy(iv.data(), pHeader->iv, iv.size());
+                encryptedSize = pHeader->encryptedSize;
+                width = pHeader->width;
+                height = pHeader->height;
+                leftOverSize = pHeader->leftOverSize;
+                GlobalUnlock(pHeader);
+            }
+        }
+
+        if (!key.empty() && !iv.empty() && encryptedSize > 0) {
+            // 유니코드 형식의 클립보드 데이터 가져오기
+            if (hMem != NULL) {
+                BYTE* pData = (BYTE*)GlobalLock(hMem);
+
+                if (pData != NULL) {
+                    // 메모리에서 png 읽기  
+                    SIZE_T dataSize = GlobalSize(hMem);
+
+                    
+                    //sprintf_s(buffer, sizeof(buffer), "암호화된 데이터 크기 : %d", dataSize);
+                    //OutputDebugStringA(buffer);
+                    int _width, _height;
+                    std::vector<unsigned char> imageData = read_png_from_memory(pData, dataSize, _width, _height);
+
+                    // 더미 픽셀 제거
+                    imageData.erase(imageData.end() - 4 * leftOverSize, imageData.end());
+
+                    write_vector_to_binary_file("C:\\Users\\hhtbo\\github\\ClipLock-DLL\\ClipLock_DLL\\ClipLock_DLL\\x64\\Debug\\log\\get", imageData);
+
+                    sprintf_s(buffer, sizeof(buffer), "get imageData 크기 : %d", imageData.size());
+                    OutputDebugStringA(buffer);
+
+
+                    GlobalUnlock(hMem);
+
+                    try {
+                        OutputDebugStringA("복호화 시작");
+                        // 대칭키와 IV를 사용해서 복호화
+                        vector<BYTE> decryptedPng = DecryptAES(imageData, key, iv);
+                        
+                        //png에서 메모리에 쓸 수 있도록 byte로 변환
+                        SIZE_T pngSize;
+                        char* originalPng = create_png_from_rgb(decryptedPng, width, height, pngSize);
+                                               
+                        HGLOBAL hOriginalPng = GlobalAlloc(GMEM_MOVEABLE, (pngSize) * sizeof(char));
+                        if (hOriginalPng != NULL) {
+                            char* newBuffer = (char*)GlobalLock(hOriginalPng);
+
+                            if (newBuffer != NULL) {
+                                memcpy(newBuffer, originalPng, pngSize);
+                                GlobalUnlock(hOriginalPng);
+                                return hOriginalPng;
+                            }
+                        }
+                    }
+                    catch (const exception& e) {
+                        // 오류 메시지 출력
+                        OutputDebugStringA("복호화 실패");
+                        OutputDebugStringA(e.what());
+                    }
+                }
+            }
+        }
+    }
     return TrueGetClipboardData(uFormat);
 }
 
@@ -72,8 +309,9 @@ BOOL APIENTRY DllMain(HMODULE hModule,
     switch (ul_reason_for_call)
     {
     case DLL_PROCESS_ATTACH:
-        // 새로운 format 등록
-        costumFormat = RegisterClipboardFormatA("costumPng");
+        CF_MYFORMAT = RegisterClipboardFormatA(RegisteredName);
+        sprintf_s(buffer, sizeof(buffer), "My Format : %d\n", CF_MYFORMAT);
+        OutputDebugStringA(buffer);
 
         DisableThreadLibraryCalls(hModule);
         DetourTransactionBegin();
@@ -100,4 +338,27 @@ BOOL APIENTRY DllMain(HMODULE hModule,
     }
 
     return TRUE;
+}
+
+// Header 메모리 공간 할당 및 초기화 함수
+HGLOBAL AllocateHeader(const vector<BYTE>& key, const vector<BYTE>& iv, DWORD encryptedSize, DWORD width, DWORD height, DWORD leftOverSize)
+{
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, sizeof(Header));
+    if (hMem != NULL) {
+
+        Header* pHeader = (Header*)GlobalLock(hMem);
+        if (pHeader != NULL) {
+            // 구조체의 key, iv, encryptedSize 값 할당해주기
+            memcpy(pHeader->key, key.data(), key.size());
+            memcpy(pHeader->iv, iv.data(), iv.size());
+            pHeader->encryptedSize = encryptedSize;
+            pHeader->width = width;
+            pHeader->height = height;
+            pHeader->leftOverSize = leftOverSize;
+            GlobalUnlock(pHeader);
+            return hMem;
+        }
+    }
+
+    return NULL;
 }

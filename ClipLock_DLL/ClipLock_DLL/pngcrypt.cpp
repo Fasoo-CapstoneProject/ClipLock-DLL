@@ -43,6 +43,7 @@ std::vector<unsigned char> read_png_from_memory(unsigned char* data, size_t data
     height = png_get_image_height(png, info);
     png_byte color_type = png_get_color_type(png, info);
     png_byte bit_depth = png_get_bit_depth(png, info);
+    
 
     if (bit_depth == 16)
         png_set_strip_16(png);
@@ -97,18 +98,20 @@ char* create_png_from_rgb(const std::vector<unsigned char>& image_data, int widt
         throw std::runtime_error("Error during PNG creation");
     }
 
+
+
     PngBuffer pngBuffer;
     png_set_write_fn(png, &pngBuffer, write_data_to_memory, nullptr);
 
     // Write header (8 bit depth, RGB)
-    png_set_IHDR(png, info, width, height, 8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
+    png_set_IHDR(png, info, width, height, 8, 6, PNG_INTERLACE_NONE,
         PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
     png_write_info(png, info);
 
     // Write image data
     std::vector<png_bytep> row_pointers(height);
     for (int y = 0; y < height; ++y) {
-        row_pointers[y] = (png_bytep)&image_data[y * width * 3];
+        row_pointers[y] = (png_bytep)&image_data[y * width * 4];
     }
     png_write_image(png, row_pointers.data());
 

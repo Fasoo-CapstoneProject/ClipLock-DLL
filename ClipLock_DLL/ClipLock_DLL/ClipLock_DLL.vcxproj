@@ -71,6 +71,8 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>$(ProjectDir)libs\OpenSSL-Win64\include;$(ProjectDir)libs\Detours\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)libs\OpenSSL-Win64;$(ProjectDir)libs\Detours\lib.X64;$(LibraryPath)</LibraryPath>
     <IncludePath>$(ProjectDir)libs\\zlib;$(ProjectDir)libs\libpng;$(ProjectDir)libs\OpenSSL-Win64\include;$(ProjectDir)libs\Detours\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(ProjectDir)libs\\zlib;$(ProjectDir)libs\OpenSSL-Win64;$(ProjectDir)libs\libpng;$(ProjectDir)libs\Detours\lib.X64;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
@@ -146,12 +148,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="crypto.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="pngcrypt.cpp" />
+    <ClCompile Include="util.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="crypto.h" />
     <ClInclude Include="formatDebug.h" />
     <ClInclude Include="pngcrypt.h" />
+    <ClInclude Include="util.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
