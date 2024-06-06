@@ -126,8 +126,6 @@ DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
     if (IsClipboardFormatAvailable(CF_MYFORMAT)) {
 
         Header header = { 0 };
-        vector<BYTE> key(32);
-        vector<BYTE> iv(16);
         if (uFormat == CF_UNICODETEXT) {
 
             // CF_MYFORMAT 형식의 클립보드 데이터 가져오기
