@@ -41,6 +41,12 @@ HGLOBAL AllocateHeader(const vector<BYTE>& key, const vector<BYTE>& iv, DWORD en
 // 암호화한 png를 새롭게 allocate하는 함수
 HGLOBAL AllocEncPng(HGLOBAL hMem, PNGINFO& info);
 
+// 암호화된 png를 복호화하는 함수
+HGLOBAL DecPng(HGLOBAL hMem, Header header);
+
+// Header 검증 함수
+int VulnCheck(Header header);
+
 // Target Pointer
 static HANDLE(WINAPI* TrueSetClipboardData)(UINT uFormat, HANDLE hMem) = SetClipboardData;
 static HANDLE(WINAPI* TrueGetClipboardData)(UINT uFormat) = GetClipboardData;
@@ -86,7 +92,7 @@ DLLBASIC_API HANDLE WINAPI MySetClipboardData(UINT uFormat, HANDLE hMem)
             }
             catch (const exception& e) {
                 // 오류 메세지 출력
-                OutputDebugStringA(e.what());
+                //OutputDebugStringA(e.what());
             }
         } // if (pUniText != NULL)
     }
@@ -176,12 +182,7 @@ DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
         // 일단 가져와야 함.
         HANDLE hMem = TrueGetClipboardData(RegisterClipboardFormatA("PNG"));
 
-        vector<BYTE> key(32);
-        vector<BYTE> iv(16);
-        DWORD encryptedSize = 0;
-        DWORD width;
-        DWORD height;
-        DWORD leftOverSize;
+        Header header;
 
         // CF_MYFORMAT 형식의 클립보드 데이터 가져오기
         HANDLE hHeaderMem = TrueGetClipboardData(CF_MYFORMAT);
@@ -189,67 +190,15 @@ DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
             Header* pHeader = (Header*)GlobalLock(hHeaderMem);
 
             if (pHeader != NULL) {
-                // Key값과 IV값 가져오기
-                memcpy(key.data(), pHeader->key, key.size());
-                memcpy(iv.data(), pHeader->iv, iv.size());
-                encryptedSize = pHeader->encryptedSize;
-                width = pHeader->width;
-                height = pHeader->height;
-                leftOverSize = pHeader->leftOverSize;
-                GlobalUnlock(pHeader);
+                memcpy(&header, pHeader, sizeof(Header));
             }
         }
 
-        if (!key.empty() && !iv.empty() && encryptedSize > 0) {
+        // OK
+        if (VulnCheck(header) == 0) {             
             // 유니코드 형식의 클립보드 데이터 가져오기
             if (hMem != NULL) {
-                BYTE* pData = (BYTE*)GlobalLock(hMem);
-
-                if (pData != NULL) {
-                    // 메모리에서 png 읽기  
-                    SIZE_T dataSize = GlobalSize(hMem);
-
-
-
-                    int _width, _height;
-                    std::vector<unsigned char> imageData = read_png_from_memory(pData, dataSize, _width, _height);
-
-                    // 더미 픽셀 제거
-                    imageData.erase(imageData.end() - 4 * leftOverSize, imageData.end());
-
-                    write_vector_to_binary_file("C:\\Users\\hhtbo\\github\\ClipLock-DLL\\ClipLock_DLL\\ClipLock_DLL\\x64\\Debug\\log\\get", imageData);
-
-
-
-
-                    GlobalUnlock(hMem);
-
-                    try {
-                        OutputDebugStringA("복호화 시작");
-                        // 대칭키와 IV를 사용해서 복호화
-                        vector<BYTE> decryptedPng = DecryptAES(imageData, key, iv);
-
-                        //png에서 메모리에 쓸 수 있도록 byte로 변환
-                        SIZE_T pngSize;
-                        char* originalPng = create_png_from_rgb(decryptedPng, width, height, pngSize);
-
-                        HGLOBAL hOriginalPng = GlobalAlloc(GMEM_MOVEABLE, (pngSize) * sizeof(char));
-                        if (hOriginalPng != NULL) {
-                            char* newBuffer = (char*)GlobalLock(hOriginalPng);
-
-                            if (newBuffer != NULL) {
-                                memcpy(newBuffer, originalPng, pngSize);
-                                GlobalUnlock(hOriginalPng);
-                                return hOriginalPng;
-                            }
-                        }
-                    }
-                    catch (const exception& e) {
-                        // 오류 메시지 출력
-                        /*OutputDebugStringA("복호화 실패");
-                        OutputDebugStringA(e.what());*/
-                    }
-                }
+                return DecPng(hMem, header);
             }
         }
     }
@@ -330,16 +279,12 @@ HGLOBAL AllocEncPng(HGLOBAL hMem, PNGINFO& info) {
 
     GlobalUnlock(hMem);
 
-    OutputDebugStringA("뭐가 문제지");
-
     // AES 대칭키 및 IV 생성
     vector<BYTE> key = GenerateAESKey();
     vector<BYTE> iv = GenerateIV();
 
     // AES 암호화
-    OutputDebugStringA("enc 시작");
     vector<BYTE> encryptedRGB = EncryptAES(imageData, key, iv);
-    OutputDebugStringA("enc 성공!!");
 
     std::pair<int, int> pair = find_factors(encryptedRGB.size() / 4);
 
@@ -370,9 +315,58 @@ HGLOBAL AllocEncPng(HGLOBAL hMem, PNGINFO& info) {
         if (newBuffer != NULL) {
             memcpy(newBuffer, encryptedPng, pngSize);
             GlobalUnlock(hNewMem);
-            OutputDebugStringA("enc success!!");
         }
     }
 
     return hNewMem;
+}
+
+int VulnCheck(Header header) {
+    return 0;
+}
+
+HGLOBAL DecPng(HGLOBAL hMem, Header header) {
+    BYTE* pData = (BYTE*)GlobalLock(hMem);
+
+    if (pData != NULL) {
+        // 메모리에서 png 읽기  
+        SIZE_T dataSize = GlobalSize(hMem);
+
+
+
+        int _width, _height;
+        std::vector<unsigned char> imageData = read_png_from_memory(pData, dataSize, _width, _height);
+
+        // 더미 픽셀 제거
+        imageData.erase(imageData.end() - 4 * header.leftOverSize, imageData.end());
+
+        GlobalUnlock(hMem);
+
+        try {
+            // 대칭키와 IV를 사용해서 복호화
+            vector<byte> vKey(header.key, header.key + sizeof(header.key));
+            vector<byte> vIv(header.iv, header.iv + sizeof(header.iv));
+            vector<BYTE> decryptedPng = DecryptAES(imageData, vKey, vIv);
+
+            //png에서 메모리에 쓸 수 있도록 byte로 변환
+            SIZE_T pngSize;
+            char* originalPng = create_png_from_rgb(decryptedPng, header.width, header.height, pngSize);
+
+            HGLOBAL hOriginalPng = GlobalAlloc(GMEM_MOVEABLE, (pngSize) * sizeof(char));
+            if (hOriginalPng != NULL) {
+                char* newBuffer = (char*)GlobalLock(hOriginalPng);
+
+                if (newBuffer != NULL) {
+                    memcpy(newBuffer, originalPng, pngSize);
+                    GlobalUnlock(hOriginalPng);
+                    return hOriginalPng;
+                }
+            }
+        }
+        catch (const exception& e) {
+            // 오류 메시지 출력
+            /*OutputDebugStringA("복호화 실패");
+            OutputDebugStringA(e.what());*/
+        }
+    }
 }
