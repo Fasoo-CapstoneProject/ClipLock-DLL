@@ -38,14 +38,14 @@ UINT CF_MYFORMAT;
 // Header 메모리 공간 할당 및 초기화 함수
 HGLOBAL AllocateHeader(const vector<BYTE>& key, const vector<BYTE>& iv, DWORD encryptedSize, DWORD width, DWORD height, DWORD leftOverSize);
 
+// Header의 데이터를 가져오는 함수
+bool LoadHeader(HANDLE hHeaderMem, Header& header);
+
 // 암호화한 png를 새롭게 allocate하는 함수
 HGLOBAL AllocEncPng(HGLOBAL hMem, PNGINFO& info);
 
 // 암호화된 png를 복호화하는 함수
 HGLOBAL DecPng(HGLOBAL hMem, Header header);
-
-// Header 검증 함수
-int VulnCheck(Header header);
 
 // Target Pointer
 static HANDLE(WINAPI* TrueSetClipboardData)(UINT uFormat, HANDLE hMem) = SetClipboardData;
@@ -112,6 +112,9 @@ DLLBASIC_API HANDLE WINAPI MySetClipboardData(UINT uFormat, HANDLE hMem)
             // 클립보드에 원래 형식으로 암호화된 데이터 넣기
             return TrueSetClipboardData(uFormat, hEncPng);
         }
+
+        // 클립보드에 NULL 헤더 넣기
+        TrueSetClipboardData(CF_MYFORMAT, NULL);
     }
 
     return TrueSetClipboardData(uFormat, hMem);
@@ -120,88 +123,74 @@ DLLBASIC_API HANDLE WINAPI MySetClipboardData(UINT uFormat, HANDLE hMem)
 DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
 {
     // 유니코드 형식이면서, 클립보드에 CF_MYFORMAT 형식이 있는 경우
-    if (uFormat == CF_UNICODETEXT && IsClipboardFormatAvailable(CF_MYFORMAT)) {
+    if (IsClipboardFormatAvailable(CF_MYFORMAT)) {
+
+        Header header = { 0 };
         vector<BYTE> key(32);
         vector<BYTE> iv(16);
-        DWORD encryptedSize = 0;
+        if (uFormat == CF_UNICODETEXT) {
 
-        // CF_MYFORMAT 형식의 클립보드 데이터 가져오기
-        HANDLE hHeaderMem = TrueGetClipboardData(CF_MYFORMAT);
-        if (hHeaderMem != NULL) {
-            Header* pHeader = (Header*)GlobalLock(hHeaderMem);
+            // CF_MYFORMAT 형식의 클립보드 데이터 가져오기
+            HANDLE hHeaderMem = TrueGetClipboardData(CF_MYFORMAT);
+            if (LoadHeader(hHeaderMem, header)) {
 
-            if (pHeader != NULL) {
-                // Key값과 IV값 가져오기
-                memcpy(key.data(), pHeader->key, key.size());
-                memcpy(iv.data(), pHeader->iv, iv.size());
-                encryptedSize = pHeader->encryptedSize;
-                GlobalUnlock(pHeader);
-            }
-        }
+                // 유니코드 형식의 클립보드 데이터 가져오기
+                HANDLE hMem = TrueGetClipboardData(CF_UNICODETEXT);
 
-        if (!key.empty() && !iv.empty() && encryptedSize > 0) {
-            // 유니코드 형식의 클립보드 데이터 가져오기
-            HANDLE hMem = TrueGetClipboardData(0xc);
+                if (hMem != NULL) {
+                    BYTE* pEncryptedText = (BYTE*)GlobalLock(hMem);
 
-            if (hMem != NULL) {
-                BYTE* pEncryptedText = (BYTE*)GlobalLock(hMem);
+                    if (pEncryptedText != NULL) {
+                        vector<BYTE> encryptedText(pEncryptedText, pEncryptedText + header.encryptedSize);
+                        GlobalUnlock(hMem);
 
-                if (pEncryptedText != NULL) {
-                    vector<BYTE> encryptedText(pEncryptedText, pEncryptedText + encryptedSize);
-                    GlobalUnlock(hMem);
+                        try {
+                            // header에서 대칭키, IV 불러오기
+                            vector<byte> key(header.key, header.key + sizeof(header.key));
+                            vector<byte> iv(header.iv, header.iv + sizeof(header.iv));
 
-                    try {
-                        // 대칭키와 IV를 사용해서 복호화
-                        vector<BYTE> decryptedText = DecryptAES(encryptedText, key, iv);
+                            // 대칭키와 IV를 사용해서 복호화
+                            vector<BYTE> decryptedText = DecryptAES(encryptedText, key, iv);
 
-                        // BYTE를 유니코드로 변환하기
-                        wstring decryptedTextWstr = Utf8ToUnicode(decryptedText);
+                            // BYTE를 유니코드로 변환하기
+                            wstring decryptedTextWstr = Utf8ToUnicode(decryptedText);
 
-                        HGLOBAL hDecryptedMem = GlobalAlloc(GMEM_MOVEABLE, (decryptedTextWstr.size() + 1) * sizeof(wchar_t));
-                        if (hDecryptedMem != NULL) {
-                            wchar_t* decryptedBuffer = (wchar_t*)GlobalLock(hDecryptedMem);
+                            HGLOBAL hDecryptedMem = GlobalAlloc(GMEM_MOVEABLE, (decryptedTextWstr.size() + 1) * sizeof(wchar_t));
+                            if (hDecryptedMem != NULL) {
+                                wchar_t* decryptedBuffer = (wchar_t*)GlobalLock(hDecryptedMem);
 
-                            if (decryptedBuffer != NULL) {
-                                wcscpy_s(decryptedBuffer, decryptedTextWstr.size() + 1, decryptedTextWstr.c_str());
-                                GlobalUnlock(hDecryptedMem);
+                                if (decryptedBuffer != NULL) {
+                                    wcscpy_s(decryptedBuffer, decryptedTextWstr.size() + 1, decryptedTextWstr.c_str());
+                                    GlobalUnlock(hDecryptedMem);
 
-                                return hDecryptedMem;
+                                    return hDecryptedMem;
+                                }
                             }
                         }
-                    }
-                    catch (const exception& e) {
-                        // 오류 메시지 출력
-                        // OutputDebugStringA(e.what());
+                        catch (const exception& e) {
+                            // 오류 메시지 출력
+                            // OutputDebugStringA(e.what());
+                        }
                     }
                 }
             }
         }
-    }
-    // png 처리
-    else if (uFormat == RegisterClipboardFormatA("PNG")) {
-        // 일단 가져와야 함.
-        HANDLE hMem = TrueGetClipboardData(RegisterClipboardFormatA("PNG"));
+        // png 처리
+        else if (uFormat == RegisterClipboardFormatA("PNG")) {
 
-        Header header;
-
-        // CF_MYFORMAT 형식의 클립보드 데이터 가져오기
-        HANDLE hHeaderMem = TrueGetClipboardData(CF_MYFORMAT);
-        if (hHeaderMem != NULL) {
-            Header* pHeader = (Header*)GlobalLock(hHeaderMem);
-
-            if (pHeader != NULL) {
-                memcpy(&header, pHeader, sizeof(Header));
-            }
-        }
-
-        // OK
-        if (VulnCheck(header) == 0) {             
-            // 유니코드 형식의 클립보드 데이터 가져오기
+            // PNG 포맷의 클립보드 데이터 가져오기
+            HANDLE hMem = TrueGetClipboardData(RegisterClipboardFormatA("PNG"));
             if (hMem != NULL) {
-                return DecPng(hMem, header);
+
+                // CF_MYFORMAT 형식의 클립보드 데이터 가져오기
+                HANDLE hHeaderMem = TrueGetClipboardData(CF_MYFORMAT);
+                if (LoadHeader(hHeaderMem, header)) {
+                    return DecPng(hMem, header);
+                }
             }
         }
     }
+
     return TrueGetClipboardData(uFormat);
 }
 
@@ -215,8 +204,8 @@ BOOL APIENTRY DllMain(HMODULE hModule,
     {
     case DLL_PROCESS_ATTACH:
         CF_MYFORMAT = RegisterClipboardFormatA(RegisteredName);
-        sprintf_s(buffer, sizeof(buffer), "My Format : %d\n", CF_MYFORMAT);
-        OutputDebugStringA(buffer);
+        // sprintf_s(buffer, sizeof(buffer), "My Format : %d\n", CF_MYFORMAT);
+        // OutputDebugStringA(buffer);
 
         DisableThreadLibraryCalls(hModule);
         DetourTransactionBegin();
@@ -225,7 +214,7 @@ BOOL APIENTRY DllMain(HMODULE hModule,
         DetourAttach(&(PVOID&)TrueGetClipboardData, MyGetClipboardData);
         lError = DetourTransactionCommit();
         if (lError != NO_ERROR) {
-            MessageBox(HWND_DESKTOP, L"Could not add detour", L"Detour Error", MB_OK);
+            // MessageBox(HWND_DESKTOP, L"Could not add detour", L"Detour Error", MB_OK);
             return FALSE;
         }
         break;
@@ -268,6 +257,24 @@ HGLOBAL AllocateHeader(const vector<BYTE>& key, const vector<BYTE>& iv, DWORD en
     return NULL;
 }
 
+// Header의 데이터를 가져오는 함수
+bool LoadHeader(HANDLE hHeaderMem, Header& header)
+{
+    if (hHeaderMem != NULL) {
+        Header* pHeader = (Header*)GlobalLock(hHeaderMem);
+
+        if (pHeader != NULL) {
+            // 구조체 복사
+            memcpy(&header, pHeader, sizeof(Header));
+            GlobalUnlock(pHeader);
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
 HGLOBAL AllocEncPng(HGLOBAL hMem, PNGINFO& info) {
 
     BYTE* pData = (BYTE*)GlobalLock(hMem);
@@ -286,10 +293,10 @@ HGLOBAL AllocEncPng(HGLOBAL hMem, PNGINFO& info) {
     // AES 암호화
     vector<BYTE> encryptedRGB = EncryptAES(imageData, key, iv);
 
-    std::pair<int, int> pair = find_factors(encryptedRGB.size() / 4);
+    std::pair<int, int> pair = find_factors((int)encryptedRGB.size() / 4);
 
     // rgb 사이즈를 정하고 부족한 부분을 더미 픽셀로 채운다.
-    int leftOverSize = pair.first * pair.second - encryptedRGB.size() / 4;
+    int leftOverSize = pair.first * pair.second - (int)encryptedRGB.size() / 4;
     for (int i = 0; i < leftOverSize * 4; i++) {
         encryptedRGB.push_back(0xff);
     }
@@ -321,18 +328,12 @@ HGLOBAL AllocEncPng(HGLOBAL hMem, PNGINFO& info) {
     return hNewMem;
 }
 
-int VulnCheck(Header header) {
-    return 0;
-}
-
 HGLOBAL DecPng(HGLOBAL hMem, Header header) {
     BYTE* pData = (BYTE*)GlobalLock(hMem);
 
     if (pData != NULL) {
         // 메모리에서 png 읽기  
         SIZE_T dataSize = GlobalSize(hMem);
-
-
 
         int _width, _height;
         std::vector<unsigned char> imageData = read_png_from_memory(pData, dataSize, _width, _height);
@@ -369,4 +370,6 @@ HGLOBAL DecPng(HGLOBAL hMem, Header header) {
             OutputDebugStringA(e.what());*/
         }
     }
+
+    return hMem;
 }
