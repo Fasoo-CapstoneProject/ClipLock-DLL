@@ -1,9 +1,6 @@
 #include "util.h"
 
 
-
-
-
 // 바이너리 파일로 저장하는 함수
 void saveToBinaryFile(const char* filename, const char* data, size_t length) {
     // 파일 열기 (바이너리 모드로 쓰기)

@@ -32,7 +32,7 @@ struct PNGINFO {
 };
 
 // Registered Clipboard Format
-const char* RegisteredName = "CF_MYFORMAT";
+const char* RegisteredName = "MYFORMAT";
 UINT CF_MYFORMAT;
 
 // Header 메모리 공간 할당 및 초기화 함수
@@ -65,11 +65,14 @@ DLLBASIC_API HANDLE WINAPI MySetClipboardData(UINT uFormat, HANDLE hMem)
 
             try {
                 // AES 대칭키 및 IV 생성
-                vector<BYTE> key = GenerateAESKey();
-                vector<BYTE> iv = GenerateIV();
+                vector<BYTE> key = cGenerateAESKey();
+                vector<BYTE> iv = cGenerateIV();
 
                 // AES 암호화
-                vector<BYTE> encryptedText = EncryptAES(plaintext, key, iv);
+                vector<BYTE> encryptedText = cEncryptAES(plaintext, key, iv);
+
+                sprintf_s(buffer, sizeof(buffer), "EncryptAES : %s, size : %d\n", encryptedText, encryptedText.size());
+                OutputDebugStringA(buffer);
 
                 // Header를 위한 공간 Allocate
                 HGLOBAL pHeader = AllocateHeader(key, iv, (DWORD)encryptedText.size(), 0, 0, 0);
@@ -147,8 +150,13 @@ DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
                             vector<byte> key(header.key, header.key + sizeof(header.key));
                             vector<byte> iv(header.iv, header.iv + sizeof(header.iv));
 
+                            sprintf_s(buffer, sizeof(buffer), " Befor DecryptAES : %s, size: %d\n", encryptedText, encryptedText.size());
+                            OutputDebugStringA(buffer);
                             // 대칭키와 IV를 사용해서 복호화
-                            vector<BYTE> decryptedText = DecryptAES(encryptedText, key, iv);
+                            vector<BYTE> decryptedText = cDecryptAES(encryptedText, key, iv);
+
+                            sprintf_s(buffer, sizeof(buffer), " Afer DecryptAES : %s\n", decryptedText);
+                            OutputDebugStringA(buffer);
 
                             // BYTE를 유니코드로 변환하기
                             wstring decryptedTextWstr = Utf8ToUnicode(decryptedText);
@@ -167,7 +175,7 @@ DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
                         }
                         catch (const exception& e) {
                             // 오류 메시지 출력
-                            // OutputDebugStringA(e.what());
+                            OutputDebugStringA(e.what());
                         }
                     }
                 }
@@ -202,8 +210,8 @@ BOOL APIENTRY DllMain(HMODULE hModule,
     {
     case DLL_PROCESS_ATTACH:
         CF_MYFORMAT = RegisterClipboardFormatA(RegisteredName);
-        // sprintf_s(buffer, sizeof(buffer), "My Format : %d\n", CF_MYFORMAT);
-        // OutputDebugStringA(buffer);
+        sprintf_s(buffer, sizeof(buffer), "My Format : %d\n", CF_MYFORMAT);
+        OutputDebugStringA(buffer);
 
         DisableThreadLibraryCalls(hModule);
         DetourTransactionBegin();
@@ -285,11 +293,11 @@ HGLOBAL AllocEncPng(HGLOBAL hMem, PNGINFO& info) {
     GlobalUnlock(hMem);
 
     // AES 대칭키 및 IV 생성
-    vector<BYTE> key = GenerateAESKey();
-    vector<BYTE> iv = GenerateIV();
+    vector<BYTE> key = cGenerateAESKey();
+    vector<BYTE> iv = cGenerateIV();
 
     // AES 암호화
-    vector<BYTE> encryptedRGB = EncryptAES(imageData, key, iv);
+    vector<BYTE> encryptedRGB = cEncryptAES(imageData, key, iv);
 
     std::pair<int, int> pair = find_factors((int)encryptedRGB.size() / 4);
 
@@ -345,7 +353,7 @@ HGLOBAL DecPng(HGLOBAL hMem, Header header) {
             // 대칭키와 IV를 사용해서 복호화
             vector<byte> vKey(header.key, header.key + sizeof(header.key));
             vector<byte> vIv(header.iv, header.iv + sizeof(header.iv));
-            vector<BYTE> decryptedPng = DecryptAES(imageData, vKey, vIv);
+            vector<BYTE> decryptedPng = cDecryptAES(imageData, vKey, vIv);
 
             //png에서 메모리에 쓸 수 있도록 byte로 변환
             SIZE_T pngSize;

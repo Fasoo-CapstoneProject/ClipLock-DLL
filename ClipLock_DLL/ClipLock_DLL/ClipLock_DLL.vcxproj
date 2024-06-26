@@ -73,8 +73,8 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>$(ProjectDir)libs\OpenSSL-Win64\include;$(ProjectDir)libs\Detours\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(ProjectDir)libs\OpenSSL-Win64;$(ProjectDir)libs\Detours\lib.X64;$(LibraryPath)</LibraryPath>
-    <IncludePath>$(ProjectDir)libs\\zlib;$(ProjectDir)libs\libpng;$(ProjectDir)libs\OpenSSL-Win64\include;$(ProjectDir)libs\Detours\include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(ProjectDir)libs\\zlib;$(ProjectDir)libs\OpenSSL-Win64;$(ProjectDir)libs\libpng;$(ProjectDir)libs\Detours\lib.X64;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)libs\\zlib;$(ProjectDir)libs\libpng;$(ProjectDir)libs\OpenSSL-Win64\include;$(ProjectDir)libs\Detours\include;$(ProjectDir)libs;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)libs\\zlib;$(ProjectDir)libs\OpenSSL-Win64;$(ProjectDir)libs\libpng;$(ProjectDir)libs\Detours\lib.X64;$(ProjectDir)libs\cryptopp890\x64\Output\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -124,7 +124,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>detours.lib;libcrypto.lib;libcrypto_static.lib;libssl.lib;libssl_static.lib;buildlibpng.lib;buildzlibpng.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>detours.lib;libcrypto.lib;libcrypto_static.lib;libssl.lib;libssl_static.lib;buildlibpng.lib;buildzlibpng.lib;cryptlib.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>

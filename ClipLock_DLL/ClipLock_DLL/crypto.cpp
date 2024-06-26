@@ -1,13 +1,22 @@
 #include "crypto.h"
+#include <stdexcept>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <stdexcept>
 #include <vector>
 #include <string>
-#include "Windows.h"
+
+#include <cryptopp890/cryptlib.h>
+#include <cryptopp890/secblock.h>
+#include <cryptopp890/aes.h>
+#include <cryptopp890/modes.h>
+#include <cryptopp890/osrng.h>
+#include <cryptopp890/filters.h>
 
 using namespace std;
+using namespace CryptoPP;
 
+/*
 // AES 대칭키 생성 함수
 vector<BYTE> GenerateAESKey() {
     vector<BYTE> key(32); // AES-256을 위한 32바이트 키
@@ -91,6 +100,62 @@ vector<BYTE> DecryptAES(const vector<BYTE>& ciphertext, const vector<BYTE>& key,
     EVP_CIPHER_CTX_free(ctx);
     return plaintext;
 }
+*/
+
+
+/*************************************************************/
+vector<BYTE> cGenerateAESKey() {
+    SecByteBlock key(AES::MAX_KEYLENGTH);
+    AutoSeededRandomPool rnd;
+    rnd.GenerateBlock(key, key.size());
+    return vector<BYTE>(key.begin(), key.end());
+}
+
+vector<BYTE> cGenerateIV() {
+    SecByteBlock iv(AES::BLOCKSIZE);
+    AutoSeededRandomPool rnd;
+    rnd.GenerateBlock(iv, iv.size());
+    return vector<BYTE>(iv.begin(), iv.end());
+}
+
+vector<BYTE> cEncryptAES(const vector<BYTE>& plaintext, const vector<BYTE>& key, const vector<BYTE>& iv) {
+    SecByteBlock keyBlock = SecByteBlock(key.data(), key.size());
+    SecByteBlock ivBlock = SecByteBlock(iv.data(), iv.size());
+
+    vector<BYTE> ciphertext;
+    CBC_Mode<AES>::Encryption encryption;
+    encryption.SetKeyWithIV(keyBlock, keyBlock.size(), ivBlock);
+
+    StringSource ss(plaintext.data(), plaintext.size(), true,
+        new StreamTransformationFilter(encryption,
+            new VectorSink(ciphertext),
+            StreamTransformationFilter::PKCS_PADDING
+        )
+    );
+
+    return ciphertext;
+}
+
+vector<BYTE> cDecryptAES(const vector<BYTE>& ciphertext, const vector<BYTE>& key, const vector<BYTE>& iv) {
+    SecByteBlock keyBlock = SecByteBlock(key.data(), key.size());
+    SecByteBlock ivBlock = SecByteBlock(iv.data(), iv.size());
+
+    vector<BYTE> plaintext;
+    CBC_Mode<AES>::Decryption decryption;
+    decryption.SetKeyWithIV(keyBlock, keyBlock.size(), ivBlock);
+
+    StringSource ss(ciphertext.data(), ciphertext.size(), true,
+        new StreamTransformationFilter(decryption,
+            new VectorSink(plaintext),
+            StreamTransformationFilter::PKCS_PADDING
+        )
+    );
+
+    return plaintext;
+}
+
+
+/*************************************************************/
 
 // 유니코드 문자열을 바이트 배열로 변환
 vector<BYTE> UnicodeToUtf8(const wstring& unicode_text) {
