@@ -23,5 +23,6 @@
 - Visual Studio 명령 프롬포트창(예: `Developer Command Prompt for Visual Studio 2019`)에서 다음과 같은 명령어를 실행하여 프로젝트를 빌드할 수도 있습니다.
   ```sh
   cd ./ClipLock_DLL/ClipLock_DLL/libs/cryptopp890
-   msbuild cryptest.sln /t:cryptlib /p:Configuration=Debug
+  msbuild cryptest.sln /t:cryptlib /p:Configuration=Debug /p:Platform=x64
   ```
+- 이후, ClipLock_DLL 프로젝트를 빌드하면 됩니다.
