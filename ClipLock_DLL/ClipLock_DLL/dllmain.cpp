@@ -71,9 +71,6 @@ DLLBASIC_API HANDLE WINAPI MySetClipboardData(UINT uFormat, HANDLE hMem)
                 // AES 암호화
                 vector<BYTE> encryptedText = cEncryptAES(plaintext, key, iv);
 
-                sprintf_s(buffer, sizeof(buffer), "EncryptAES : %s, size : %d\n", encryptedText, encryptedText.size());
-                OutputDebugStringA(buffer);
-
                 // Header를 위한 공간 Allocate
                 HGLOBAL pHeader = AllocateHeader(key, iv, (DWORD)encryptedText.size(), 0, 0, 0);
                 if (pHeader != NULL) {
@@ -150,13 +147,8 @@ DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
                             vector<byte> key(header.key, header.key + sizeof(header.key));
                             vector<byte> iv(header.iv, header.iv + sizeof(header.iv));
 
-                            sprintf_s(buffer, sizeof(buffer), " Befor DecryptAES : %s, size: %d\n", encryptedText, encryptedText.size());
-                            OutputDebugStringA(buffer);
                             // 대칭키와 IV를 사용해서 복호화
                             vector<BYTE> decryptedText = cDecryptAES(encryptedText, key, iv);
-
-                            sprintf_s(buffer, sizeof(buffer), " Afer DecryptAES : %s\n", decryptedText);
-                            OutputDebugStringA(buffer);
 
                             // BYTE를 유니코드로 변환하기
                             wstring decryptedTextWstr = Utf8ToUnicode(decryptedText);
@@ -175,7 +167,7 @@ DLLBASIC_API HANDLE WINAPI MyGetClipboardData(UINT uFormat)
                         }
                         catch (const exception& e) {
                             // 오류 메시지 출력
-                            OutputDebugStringA(e.what());
+                            //OutputDebugStringA(e.what());
                         }
                     }
                 }
@@ -210,8 +202,8 @@ BOOL APIENTRY DllMain(HMODULE hModule,
     {
     case DLL_PROCESS_ATTACH:
         CF_MYFORMAT = RegisterClipboardFormatA(RegisteredName);
-        sprintf_s(buffer, sizeof(buffer), "My Format : %d\n", CF_MYFORMAT);
-        OutputDebugStringA(buffer);
+        // sprintf_s(buffer, sizeof(buffer), "My Format : %d\n", CF_MYFORMAT);
+        // OutputDebugStringA(buffer);
 
         DisableThreadLibraryCalls(hModule);
         DetourTransactionBegin();
