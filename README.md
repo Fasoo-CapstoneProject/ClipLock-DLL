@@ -14,7 +14,7 @@
 
 ## 기술 스택
 - MS사에서 공개한 Windows API 후킹 라이브러리 Detours를 사용해서 클립보드 API 후킹 및 제어
-- OpenSSL 라이브러리의 AES-256 암호화 알고리즘을 사용해서 데이터를 암복호화
+- Crypto++ 라이브러리의 AES-256 암호화 알고리즘을 사용해서 데이터를 암복호화
 - PNG관련 zlib, libpng 라이브러리를 사용해서 Truecolor with alaph타입의 PNG 이미지를 추출하고 암복호화 진행
 
 
