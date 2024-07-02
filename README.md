@@ -16,3 +16,12 @@
 - MS사에서 공개한 Windows API 후킹 라이브러리 Detours를 사용해서 클립보드 API 후킹 및 제어
 - OpenSSL 라이브러리의 AES-256 암호화 알고리즘을 사용해서 데이터를 암복호화
 - PNG관련 zlib, libpng 라이브러리를 사용해서 Truecolor with alaph타입의 PNG 이미지를 추출하고 암복호화 진행
+
+
+## 빌드 방법
+- 해당 DLL을 빌드하기 전에 ClipLock_DLL\ClipLock_DLL\libs\cryptopp890 폴더에서 'cryptest.sln' 솔류션 파일에서 'cryptlib' 프로젝트를 빌드해야합니다.
+- 아래와 같이 Visual Studio 명령 프롬포트창에서 다음과 같은 명령어를 실행하여 프로젝트를 빌드할 수도 있습니다.
+  ```sh
+  cd ./ClipLock_DLL/ClipLock_DLL/libs/cryptopp890
+   msbuild cryptest.sln /t:cryptlib /p:Configuration=Debug
+  ```
