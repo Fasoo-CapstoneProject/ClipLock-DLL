@@ -20,7 +20,7 @@
 
 ## 빌드 방법
 - 해당 DLL을 빌드하기 전에 ClipLock_DLL\ClipLock_DLL\libs\cryptopp890 폴더에서 'cryptest.sln' 솔류션 파일에서 'cryptlib' 프로젝트를 빌드해야합니다.
-- 아래와 같이 Visual Studio 명령 프롬포트창에서 다음과 같은 명령어를 실행하여 프로젝트를 빌드할 수도 있습니다.
+- Visual Studio 명령 프롬포트창(예: `Developer Command Prompt for Visual Studio 2019`)에서 다음과 같은 명령어를 실행하여 프로젝트를 빌드할 수도 있습니다.
   ```sh
   cd ./ClipLock_DLL/ClipLock_DLL/libs/cryptopp890
    msbuild cryptest.sln /t:cryptlib /p:Configuration=Debug
